@@ -1,64 +1,60 @@
-const { google } = require("googleapis");
 const fs = require("fs");
-const path = require("path");
 const cron = require("node-cron");
-const moment = require("moment");
 const dotenv = require("dotenv");
+const uploadFileToDrive = require("./utility");
+const log4js = require("log4js");
+const prompt = require("prompt-sync")({ sigint: true });
 
 dotenv.config();
 
-// Set the credentials and tokens
-const credentials = {
-    clientId: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    redirectUri: process.env.GOOGLE_REDIRECT_URI,
+const { traceLogConfig } = require("./appSettings").log4js;
+log4js.configure(traceLogConfig);
+const logger = log4js.getLogger("info");
+
+const configPath = process.env.CONFIG_FILE_PATH;
+let config;
+try {
+    const configFile = fs.readFileSync(configPath, "utf8");
+    config = JSON.parse(configFile);
+} catch (err) {
+    config = {
+        filePath: "",
+        folderId: "",
+    };
+}
+const promptUser = async () => {
+    const filePath = prompt("Please provide the file path - ");
+    const folderId = prompt("Please provide folder ID from drive - ");
+
+    if (filePath && folderId) {
+        saveData(filePath, folderId);
+        startProgram();
+    } else {
+        logger.error("No path was proveded");
+        console.log("Please provide path");
+    }
 };
 
-// Create an OAuth2 client
-const oauth2Client = new google.auth.OAuth2(
-    credentials.clientId,
-    credentials.clientSecret,
-    credentials.redirectUri
-);
+const saveData = async (filePath, folderId) => {
+    fs.writeFileSync(
+        configPath,
+        JSON.stringify({ filePath: filePath, folderId: folderId }, null, 2),
+        "utf8"
+    );
+    logger.info("Saved file path and folder id");
+};
 
-//Set file path to upload
-const filePath = "your file path";
+const startProgram = async () => {
+    logger.info("Using existing configuration:");
+    logger.info(`File Path: ${config.filePath}`);
+    logger.info(`Folder Name: ${config.folderId}`);
+    cron.schedule("57 17 * * 7", async () => {
+        logger.info("Initializing Google Drive Upload");
+        const res = await uploadFileToDrive(config);
+        logger.debug(res.message);
+    });
+};
 
-//Set folder id (optional) from google drive folder
-const folderId = "your folder id";
-
-oauth2Client.setCredentials({
-    refresh_token: process.env.GOOGLE_OAUTH_REFRESH_TOKEN,
-});
-
-// Upload file to Google Drive
-async function uploadFileToDrive() {
-    const drive = google.drive({ version: "v3", auth: oauth2Client });
-    const fileName = path.basename(filePath);
-    const fileMimeType = "application/octet-stream";
-
-    try {
-        const response = await drive.files.create({
-            requestBody: {
-                name: fileName,
-                mimeType: fileMimeType,
-                parents: folderId ? [folderId] : [],
-            },
-            media: {
-                mimeType: fileMimeType,
-                body: fs.createReadStream(filePath),
-            },
-        });
-        console.log("File uploaded successfully. File ID:", response.data.id);
-    } catch (error) {
-        console.error("Error uploading file:", error);
-    }
-}
-
-uploadFileToDrive();
-
-// Schedule the function to run every Monday at 9 AM
-// cron.schedule("0 9 * * 1", () => {
-//     console.log("Running uploadFileToDrive() at", moment().format());
-//     uploadFileToDrive();
-// });
+if (!config.filePath || !config.folderId) {
+    promptUser();
+} else startProgram();

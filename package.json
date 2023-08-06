@@ -12,7 +12,9 @@
     "dotenv": "^16.1.4",
     "google-auth-library": "^8.7.0",
     "googleapis": "^114.0.0",
+    "log4js": "^6.9.1",
     "moment": "^2.29.4",
-    "node-cron": "^3.0.2"
+    "node-cron": "^3.0.2",
+    "prompt-sync": "^4.2.0"
   }
 }
